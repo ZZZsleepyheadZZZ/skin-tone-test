@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>肤色冷暖测试</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #111; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; user-select: none; }
+    #app { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+    #video, #lightOverlay, #guideWrap, #resultPage { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #video { z-index: 1; background: #000; object-fit: cover; transform: scaleX(-1); }
+    #lightOverlay { z-index: 2; pointer-events: none; background: transparent; mix-blend-mode: screen; opacity: .85; transition: background-color .15s ease; }
+    #lightOverlay.dark { mix-blend-mode: normal; opacity: 1; }
+    #guideWrap { z-index: 3; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    #guideOval { position: relative; display: flex; align-items: center; justify-content: center; width: 62%; aspect-ratio: 3 / 4; border: 3px dashed rgba(255,255,255,.5); border-radius: 50%; transition: border-color .2s, box-shadow .2s; }
+    #guideOval.ready { border-color: #4ade80; box-shadow: 0 0 30px rgba(74,222,128,.4); }
+    #guideOval.warn { border-color: #facc15; box-shadow: 0 0 30px rgba(250,204,21,.3); }
+    .hint { position: absolute; bottom: -44px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 20px; background: rgba(0,0,0,.35); color: rgba(255,255,255,.9); font-size: 15px; white-space: nowrap; text-shadow: 0 1px 4px rgba(0,0,0,.8); backdrop-filter: blur(4px); }
+    #envBar { position: absolute; top: 0; z-index: 6; width: 100%; padding: max(12px, env(safe-area-inset-top)) 16px 12px; transform: translateY(-100%); background: rgba(220,38,38,.85); color: #fff; font-size: 13px; text-align: center; opacity: 0; transition: transform .3s, opacity .3s; backdrop-filter: blur(6px); }
+    #envBar.show { transform: translateY(0); opacity: 1; }
+    #progressWrap { position: absolute; top: 50%; left: 50%; z-index: 5; display: none; flex-direction: column; align-items: center; gap: 16px; transform: translate(-50%, -50%); pointer-events: none; }
+    #progressWrap.show { display: flex; }
+    #ring { width: 120px; height: 120px; } #ring circle { fill: none; stroke-width: 6; } #ring .bg { stroke: rgba(255,255,255,.15); } #ring .fg { stroke: #4ade80; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .1s linear; }
+    #progressLabel { padding: 6px 16px; border-radius: 20px; background: rgba(0,0,0,.4); font-size: 15px; text-shadow: 0 1px 6px rgba(0,0,0,.9); backdrop-filter: blur(4px); }
+    .panel { position: absolute; bottom: 0; z-index: 7; width: 100%; padding: 24px 20px max(24px, env(safe-area-inset-bottom)); text-align: center; background: linear-gradient(to top, rgba(0,0,0,.85), transparent); }
+    .title { margin-bottom: 10px; font-size: 22px; font-weight: 700; } .desc { max-width: 320px; margin: 0 auto 20px; color: rgba(255,255,255,.75); font-size: 14px; line-height: 1.7; } .desc b { color: #facc15; }
+    .btn { display: inline-block; padding: 16px 48px; border: 0; border-radius: 40px; background: #fff; color: #111; box-shadow: 0 4px 20px rgba(0,0,0,.3); cursor: pointer; font-size: 17px; font-weight: 600; transition: transform .15s, opacity .2s; } .btn:active { transform: scale(.96); } .btn:disabled { cursor: not-allowed; opacity: .4; }
+    #resultPage { z-index: 20; display: none; flex-direction: column; align-items: center; justify-content: center; overflow-y: auto; padding: max(32px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); background: #0d0d0f; text-align: center; }
+    #resultPage.show { display: flex; } #resultTone { margin-bottom: 6px; font-size: 40px; font-weight: 800; letter-spacing: 2px; } #resultConfidence { margin-bottom: 28px; color: rgba(255,255,255,.6); font-size: 14px; }
+    #swatchRow { display: flex; gap: 12px; margin-bottom: 24px; } .swatch { width: 54px; height: 54px; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.4); } #resultDesc { max-width: 320px; margin-bottom: 14px; color: rgba(255,255,255,.75); font-size: 15px; line-height: 1.8; } #metricGrid { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px; width: min(320px, 100%); margin: 4px 0 14px; text-align: left; } .metric { padding: 10px 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(255,255,255,.05); } .metric span { display: block; color: rgba(255,255,255,.5); font-size: 11px; } .metric b { display: block; margin-top: 3px; font-family: ui-monospace, monospace; font-size: 17px; font-weight: 600; } #scoreDetail { max-width: 320px; margin-bottom: 22px; color: rgba(255,255,255,.35); font-size: 11px; line-height: 1.5; }
+    .hidden { display: none !important; } #app.collecting #guideWrap, #app.collecting #startPanel, #app.collecting #envBar { opacity: 0; transition: opacity .2s; }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <video id="video" autoplay playsinline muted></video><div id="lightOverlay"></div>
+    <div id="guideWrap"><div id="guideOval"><div class="hint" id="guideHint">点击开始测试以启用摄像头</div></div></div>
+    <div id="envBar">当前环境偏亮，建议到较暗房间测试</div>
+    <div id="progressWrap"><svg id="ring" viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="52"></circle><circle class="fg" cx="60" cy="60" r="52" id="ringFg"></circle></svg><div id="progressLabel">准备中…</div></div>
+    <section class="panel" id="startPanel"><div class="title">肤色冷暖测试</div><div class="desc">请在<b>较暗的房间</b>进行测试，关掉顶灯、避开窗户。<br>把脸放入椭圆框内，保持约 <b>25–35cm</b> 距离，<br>测试中请<b>保持不动</b>，约 15 秒。</div><button class="btn" id="startBtn">开始测试</button></section>
+    <section id="resultPage"><div id="resultTone">—</div><div id="resultConfidence">—</div><div id="swatchRow"></div><div id="resultDesc"></div><div id="metricGrid"></div><div id="scoreDetail"></div><button class="btn" id="retryBtn">再测一次</button></section>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const CONFIG = { ENV_LUMA_THRESHOLD: 60, FACE_RATIO_MIN: .32, FACE_RATIO_MAX: .68, FACE_RATIO_IDEAL_MIN: .38, FACE_RATIO_IDEAL_MAX: .58, SCORE_WARM: .05, SCORE_COOL: -.05, SAMPLES_PER_STEP: 6, WORK_W: 320, WORK_H: 240, SEQUENCE: [{id:'dark1',color:'#000',dark:true,label:'环境基准',ms:900},{id:'white',color:'#fff',label:'中性白光',ms:1200},{id:'warm',color:'#ffd9b3',label:'暖光',ms:1200},{id:'cool',color:'#b3d9ff',label:'冷光',ms:1200},{id:'dark2',color:'#000',dark:true,label:'环境基准',ms:900}] };
+    const $ = id => document.getElementById(id), video = $('video'), overlay = $('lightOverlay'), oval = $('guideOval'), hint = $('guideHint'), envBar = $('envBar'), progress = $('progressWrap'), label = $('progressLabel'), ring = $('ringFg'), startPanel = $('startPanel'), start = $('startBtn'), resultsPage = $('resultPage'), app = $('app');
+    const canvas = document.createElement('canvas'); canvas.width = CONFIG.WORK_W; canvas.height = CONFIG.WORK_H; const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    let stream, running = false, monitoring = false, autoStart = false, faceDetector, lastBox;
+    const ringLength = 2 * Math.PI * 52; ring.style.strokeDasharray = ringLength; ring.style.strokeDashoffset = ringLength;
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    function grab() { if (!video.videoWidth) return null; ctx.drawImage(video, 0, 0, CONFIG.WORK_W, CONFIG.WORK_H); return ctx.getImageData(0, 0, CONFIG.WORK_W, CONFIG.WORK_H); }
+    function average(image, x0, y0, x1, y1) { const {width:w,height:h,data} = image; let r=0,g=0,b=0,n=0; for(let y=Math.max(0,Math.floor(y0*h));y<Math.min(h,Math.ceil(y1*h));y++) for(let x=Math.max(0,Math.floor(x0*w));x<Math.min(w,Math.ceil(x1*w));x++){ const i=(y*w+x)*4; r+=data[i];g+=data[i+1];b+=data[i+2];n++; } return n ? {r:r/n,g:g/n,b:b/n} : {r:0,g:0,b:0}; }
+    function skin(image, box) { const regions = [[.18,.55,.36,.72],[.64,.55,.82,.72],[.35,.12,.65,.28]].map(([x0,y0,x1,y1]) => average(image, box.x+box.w*x0,box.y+box.h*y0,box.x+box.w*x1,box.y+box.h*y1)); return {r:regions.reduce((s,v)=>s+v.r,0)/3,g:regions.reduce((s,v)=>s+v.g,0)/3,b:regions.reduce((s,v)=>s+v.b,0)/3}; }
+    async function face() { if (faceDetector) try { const faces = await faceDetector.detect(video); if (faces.length) { const b=faces[0].boundingBox; return {x:b.x/video.videoWidth,y:b.y/video.videoHeight,w:b.width/video.videoWidth,h:b.height/video.videoHeight}; } } catch { faceDetector=null; } return {x:.3,y:.18,w:.4,h:.55}; }
+    async function initCamera() { try { stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false}); video.srcObject=stream; await video.play(); if ('FaceDetector' in window) faceDetector=new FaceDetector({fastMode:true,maxDetectedFaces:1}); return true; } catch(error) { alert('无法访问摄像头：'+error.message+'\n请使用 HTTPS 或 localhost，并允许摄像头权限。'); return false; } }
+    async function monitor() { if (monitoring) return; monitoring=true; while(monitoring) { if (!running) { const frame=grab(); if(frame) { const c=average(frame,.25,.25,.75,.75), lum=.299*c.r+.587*c.g+.114*c.b; envBar.classList.toggle('show',lum>CONFIG.ENV_LUMA_THRESHOLD); lastBox=await face(); let state='ready', message='很好，保持不动'; if(lastBox.w<CONFIG.FACE_RATIO_MIN){state='warn';message='请靠近一点';} else if(lastBox.w>CONFIG.FACE_RATIO_MAX){state='warn';message='请拿远一点';} else if(lastBox.w<CONFIG.FACE_RATIO_IDEAL_MIN||lastBox.w>CONFIG.FACE_RATIO_IDEAL_MAX) message='距离差不多，保持住'; if(lum>CONFIG.ENV_LUMA_THRESHOLD){state='warn';message='环境偏亮，先调暗再继续';} oval.className=state; hint.textContent=message; if(state==='ready'&&autoStart) collect(); } } await new Promise(requestAnimationFrame); } }
+    const median = samples => { const get=k=>{const a=samples.map(s=>s[k]).sort((a,b)=>a-b);return a[Math.floor(a.length/2)]||0}; return {r:get('r'),g:get('g'),b:get('b')}; };
+    async function collect() { if(running) return; running=true; autoStart=false; app.classList.add('collecting'); progress.classList.add('show'); label.textContent='准备中…'; await sleep(600); const samples={}; for(let index=0;index<CONFIG.SEQUENCE.length;index++){ const step=CONFIG.SEQUENCE[index]; overlay.style.backgroundColor=step.color; overlay.classList.toggle('dark',!!step.dark); label.textContent=`${step.label} (${index+1}/${CONFIG.SEQUENCE.length})`; await sleep(350); const frames=[]; for(let i=0;i<CONFIG.SAMPLES_PER_STEP;i++){const frame=grab();if(frame)frames.push(skin(frame,lastBox||{x:.3,y:.18,w:.4,h:.55}));await sleep(60);} samples[step.id]=median(frames); ring.style.strokeDashoffset=ringLength*(1-(index+1)/CONFIG.SEQUENCE.length); } overlay.style.backgroundColor='transparent'; overlay.classList.remove('dark'); label.textContent='分析中…'; await sleep(300); show(analyze(samples)); progress.classList.remove('show'); app.classList.remove('collecting'); running=false; }
+    // 将浏览器取得的 sRGB 近似换算为 CIE L*a*b*（D65 白点）。
+    // 未使用色卡校准时，这些数值仅适合本次测试内的相对比较。
+    function rgbToLab({r,g,b}) { const linear = value => { value /= 255; return value <= .04045 ? value / 12.92 : Math.pow((value + .055) / 1.055, 2.4); }; r=linear(r); g=linear(g); b=linear(b); const x=(r*.4124+g*.3576+b*.1805)/.95047, y=r*.2126+g*.7152+b*.0722, z=(r*.0193+g*.1192+b*.9505)/1.08883, f=value=>value>.008856?Math.cbrt(value):7.787*value+16/116, fx=f(x),fy=f(y),fz=f(z); return {l:116*fy-16,a:500*(fx-fy),b:200*(fy-fz)}; }
+    function analyze(s) { const ambient={r:(s.dark1.r+s.dark2.r)/2,g:(s.dark1.g+s.dark2.g)/2,b:(s.dark1.b+s.dark2.b)/2}, sub=x=>({r:Math.max(0,x.r-ambient.r),g:Math.max(0,x.g-ambient.g),b:Math.max(0,x.b-ambient.b)}), white=sub(s.white),warm=sub(s.warm),cool=sub(s.cool), warmRB=warm.b>1?warm.r/warm.b:0,coolRB=cool.b>1?cool.r/cool.b:0,responseScore=warmRB-coolRB,signal=(warm.r+warm.b+cool.r+cool.b)/4,lab=rgbToLab(white),hue=(Math.atan2(lab.b,lab.a)*180/Math.PI+360)%360,ita=Math.atan2(lab.l-50,lab.b)*180/Math.PI;
+      // 黄感 b* 与红感 a* 的相对关系：这是用于彩妆建议的透明「参考分数」，并非医学或行业标准。
+      const undertoneScore=Math.max(-1,Math.min(1,(lab.b-1.25*lab.a)/18)); let tone='中性倾向',color='#c9c9c9',desc='测得颜色接近中性。冷暖色都可以尝试，并以自然光下的试色效果为准。',swatches=['#C9C9C9','#E8C9A0','#A8C9E8','#D4B8A8','#B8A8C9']; if(undertoneScore>.15){tone='偏暖倾向';color='#ffb088';desc='样本的相对黄感更突出，呈现偏暖倾向。可优先试橘、桃、珊瑚、金棕等色系。';swatches=['#FFB088','#FF8C5A','#E8A87C','#C97B4A','#8B5E3C'];} else if(undertoneScore<-.15){tone='偏冷倾向';color='#9db8ff';desc='样本的相对粉红感更突出，呈现偏冷倾向。可优先试玫瑰、蓝紫、浆果等色系。';swatches=['#9DB8FF','#C9A9E0','#E8A0B8','#B07AA1','#7B6CA8'];} return {tone,color,desc,swatches,confidence:signal>50?'高':signal>25?'中':'低',lab,hue,ita,undertoneScore,responseScore,detail:`相机 / 屏幕的自动白平衡、曝光与环境光会影响数据；以下为娱乐性参考，不作医学判断。`}; }
+    function show(result) { $('resultTone').textContent=result.tone; $('resultTone').style.color=result.color; $('resultConfidence').textContent='采集信号：'+result.confidence+' · 非标准诊断'; $('swatchRow').innerHTML=result.swatches.map(color=>`<div class="swatch" style="background:${color}"></div>`).join(''); $('resultDesc').textContent=result.desc; const metrics=[['L* 明度',result.lab.l.toFixed(1)],['a* 红—绿',result.lab.a.toFixed(1)],['b* 黄—蓝',result.lab.b.toFixed(1)],['色相角 h°',result.hue.toFixed(1)+'°'],['冷暖参考分数',(result.undertoneScore>=0?'+':'')+result.undertoneScore.toFixed(2)],['ITA 明暗角',result.ita.toFixed(1)+'°']]; $('metricGrid').innerHTML=metrics.map(([name,value])=>`<div class="metric"><span>${name}</span><b>${value}</b></div>`).join(''); $('scoreDetail').textContent=result.detail; resultsPage.classList.add('show'); }
+    start.addEventListener('click',async()=>{start.disabled=true;start.textContent='启动中…';if(!await initCamera()){start.disabled=false;start.textContent='开始测试';return;}startPanel.classList.add('hidden');autoStart=true;monitor();});
+    $('retryBtn').addEventListener('click',()=>{resultsPage.classList.remove('show');startPanel.classList.remove('hidden');start.disabled=false;start.textContent='开始测试';autoStart=false;ring.style.strokeDashoffset=ringLength;});
+    document.addEventListener('visibilitychange',()=>{monitoring=!document.hidden;if(!document.hidden)monitor();});
+  })();
+  </script>
+</body>
+</html>
